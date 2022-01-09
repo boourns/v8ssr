@@ -24,9 +24,11 @@ type renderEvent struct {
 }
 
 type RenderThread struct {
+	renderer *Renderer
 	events chan renderEvent
-	script *v8.UnboundScript
 	isolate *v8.Isolate
+	context *v8.Context
+	script *v8.UnboundScript
 }
 
 func (r *Renderer) newRenderThread() *RenderThread {
@@ -41,6 +43,7 @@ func (r *Renderer) newRenderThread() *RenderThread {
 		events: r.events,
 		script: script,
 		isolate: iso,
+		renderer: r,
 	}
 
 	go thread.run()
@@ -55,9 +58,38 @@ func (t *RenderThread) run() {
 			switch event.action {
 			case request:
 				log.Printf("Render request: %v", event.params)
+				var result renderResult
+
+				ctx := v8.NewContext(t.isolate)
+				_, err := t.script.Run(ctx)
+				if err != nil {
+					result.Error = err
+				} else {
+					global := ctx.Global()
+					err = global.Set("params", event.params)
+					if err != nil {
+						result.Error = err
+					} else {
+						value, err := ctx.RunScript(t.renderer.Config.Entry, "app.js")
+
+						if err != nil {
+							result.Error = err
+						}
+
+						if value != nil {
+							result.Output = value.String()
+						}
+					}
+				}
+
+				event.result <- &result
+				ctx.Close()
+
 				break
 			case shutdown:
 				t.isolate.Dispose()
+
+				event.result <- &renderResult{}
 				return
 			}
 		}

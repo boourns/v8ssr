@@ -5,24 +5,46 @@ import (
 	v8 "rogchap.com/v8go"
 )
 
+type RendererConfig struct {
+	Entry string `json:"entry"`
+	Threads int `json:"threads"`
+}
+
+var DefaultRendererConfig RendererConfig = RendererConfig{
+	Entry: "render()",
+	Threads: 4,
+}
 
 type Renderer struct {
+	Config RendererConfig
+
 	source string
 	compiledScriptCache *v8.CompilerCachedData
 	events chan renderEvent
-
 	threads []*RenderThread
 }
 
-func NewRendererFromFile(filename string) (result *Renderer) {
+func NewRendererFromFile(filename string, config RendererConfig) (result *Renderer) {
 	src, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
 	}
-	return NewRenderer(string(src))
+	return NewRenderer(string(src), config)
 }
 
-func NewRenderer(source string) (result *Renderer) {
+func NewRenderer(source string, config RendererConfig) (result *Renderer) {
+	result = &Renderer{}
+
+	result.Config = DefaultRendererConfig
+
+	if config.Entry != "" {
+		result.Config.Entry = config.Entry
+	}
+
+	if config.Threads > 0 {
+		result.Config.Threads = config.Threads
+	}
+
 	result.events = make(chan renderEvent, 10)
 	result.source = source
 
@@ -35,7 +57,9 @@ func NewRenderer(source string) (result *Renderer) {
 
 	result.compiledScriptCache = script.CreateCodeCache()
 
-	result.threads = append(result.threads, result.newRenderThread())
+	for i := 0; i < result.Config.Threads; i++ {
+		result.threads = append(result.threads, result.newRenderThread())
+	}
 
 	iso.Dispose()
 
@@ -47,6 +71,7 @@ func (r *Renderer) Render(params interface{}) *renderResult {
 	defer close(ret)
 
 	r.events <- renderEvent{
+		result: ret,
 		action: request,
 		params: params,
 	}
@@ -55,12 +80,17 @@ func (r *Renderer) Render(params interface{}) *renderResult {
 }
 
 func (r *Renderer) Shutdown() {
-	ret := make(chan *renderResult)
-	defer close(ret)
+	for i := 0; i < r.Config.Threads; i++ {
+		ret := make(chan *renderResult)
 
-	r.events <- renderEvent{
-		action: shutdown,
+		r.events <- renderEvent{
+			result: ret,
+			action: shutdown,
+		}
+
+		<- ret
+		close(ret)
 	}
 
-	<- ret
+	close(r.events)
 }
