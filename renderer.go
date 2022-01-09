@@ -2,16 +2,23 @@ package v8ssr
 
 import (
 	"io/ioutil"
+	"os"
 	v8 "rogchap.com/v8go"
+	"time"
 )
 
 type RendererConfig struct {
-	Entry string `json:"entry"`
-	Threads int `json:"threads"`
+	filename string
+	ReloadOnChange bool
+	Entry string
+	Threads int
+
 }
 
 var DefaultRendererConfig RendererConfig = RendererConfig{
 	Entry: "render()",
+	filename: "",
+	ReloadOnChange: false,
 	Threads: 4,
 }
 
@@ -22,14 +29,24 @@ type Renderer struct {
 	compiledScriptCache *v8.CompilerCachedData
 	events chan renderEvent
 	threads []*RenderThread
+
+	fileSize int64
+	modTime time.Time
 }
 
 func NewRendererFromFile(filename string, config RendererConfig) (result *Renderer) {
+	src := loadScriptFromFile(filename)
+	config.filename = filename
+
+	return NewRenderer(string(src), config)
+}
+
+func loadScriptFromFile(filename string) string {
 	src, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
 	}
-	return NewRenderer(string(src), config)
+	return string(src)
 }
 
 func NewRenderer(source string, config RendererConfig) (result *Renderer) {
@@ -45,28 +62,24 @@ func NewRenderer(source string, config RendererConfig) (result *Renderer) {
 		result.Config.Threads = config.Threads
 	}
 
-	result.events = make(chan renderEvent, 10)
+	if config.ReloadOnChange && config.filename != "" {
+		result.Config.ReloadOnChange = true
+		result.Config.filename = config.filename
+	} else if config.ReloadOnChange {
+		panic("Must use NewRendererFromFile with ReloadOnChange")
+	}
+
 	result.source = source
-
-	iso := v8.NewIsolate()
-
-	script, err := iso.CompileUnboundScript(result.source, "app.js", v8.CompileOptions{}) // compile script to get cached data
-	if err != nil {
-		panic(err)
-	}
-
-	result.compiledScriptCache = script.CreateCodeCache()
-
-	for i := 0; i < result.Config.Threads; i++ {
-		result.threads = append(result.threads, result.newRenderThread())
-	}
-
-	iso.Dispose()
+	result.initializeThreads()
 
 	return
 }
 
 func (r *Renderer) Render(params interface{}) *renderResult {
+	if r.Config.ReloadOnChange {
+		r.reloadIfChanged()
+	}
+
 	ret := make(chan *renderResult)
 	defer close(ret)
 
@@ -92,5 +105,41 @@ func (r *Renderer) Shutdown() {
 		close(ret)
 	}
 
+	r.threads = []*RenderThread{}
+
 	close(r.events)
+}
+
+func (r *Renderer) initializeThreads() {
+	r.events = make(chan renderEvent, 10)
+
+	iso := v8.NewIsolate()
+
+	script, err := iso.CompileUnboundScript(r.source, "app.js", v8.CompileOptions{}) // compile script to get cached data
+	if err != nil {
+		panic(err)
+	}
+
+	r.compiledScriptCache = script.CreateCodeCache()
+
+	for i := 0; i < r.Config.Threads; i++ {
+		r.threads = append(r.threads, r.newRenderThread())
+	}
+
+	iso.Dispose()
+}
+
+func (r *Renderer) reloadIfChanged() {
+	stat, err := os.Stat(r.Config.filename)
+	if err != nil {
+		panic(err)
+	}
+
+	if stat.Size() != r.fileSize || stat.ModTime() != r.modTime {
+		r.source = loadScriptFromFile(r.Config.filename)
+		r.Shutdown()
+		r.initializeThreads()
+		r.modTime = stat.ModTime()
+		r.fileSize = stat.Size()
+	}
 }
