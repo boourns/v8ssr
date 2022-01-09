@@ -46,4 +46,5 @@ const render = () => {
 		t.Fatalf("Incorrect output, received %v", result.Output)
 	}
 
+	r.Shutdown()
 }
