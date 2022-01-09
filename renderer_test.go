@@ -9,7 +9,7 @@ import (
 
 func TestBasicRenderer(t *testing.T) {
 	src := `
-const render = () => {
+const entry = () => {
 	return "hello from javascript, " + params 
 }
 `
@@ -26,7 +26,7 @@ const render = () => {
 
 	r.Shutdown()
 
-	src = "const render = () => {let p = JSON.parse(params); return `${p.things.length} things, url ${p.url}`}"
+	src = "const entry = () => {let p = JSON.parse(params); return `${p.things.length} things, url ${p.url}`}"
 
 	r = NewRenderer(src, RendererConfig{})
 
@@ -53,7 +53,7 @@ const render = () => {
 
 func TestScriptReload(t *testing.T) {
 	src1 := `
-const render = () => {
+const entry = () => {
 	return "script1"
 }
 `
@@ -68,7 +68,7 @@ const render = () => {
 	}
 
 	src2 := `
-const render = () => {
+const entry = () => {
 	return "script2"
 }
 `

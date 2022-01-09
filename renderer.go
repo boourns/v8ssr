@@ -16,7 +16,7 @@ type RendererConfig struct {
 }
 
 var DefaultRendererConfig RendererConfig = RendererConfig{
-	Entry: "render()",
+	Entry: "entry()",
 	filename: "",
 	ReloadOnChange: false,
 	Threads: 4,
