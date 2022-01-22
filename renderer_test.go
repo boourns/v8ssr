@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	v8 "rogchap.com/v8go"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ const entry = () => {
 	return "hello from javascript, " + params 
 }
 `
-	r := NewRenderer(src, RendererConfig{})
+	r := NewRenderer(src, RendererConfig{}, map[string]RendererCallback{})
 
 	result := r.Render("blah")
 	if result.Error != nil {
@@ -28,7 +29,7 @@ const entry = () => {
 
 	src = "const entry = () => {let p = JSON.parse(params); return `${p.things.length} things, url ${p.url}`}"
 
-	r = NewRenderer(src, RendererConfig{})
+	r = NewRenderer(src, RendererConfig{}, map[string]RendererCallback{})
 
 	data, err := json.Marshal(map[string]interface{}{
 		"things": []interface{}{"apple", "banana"},
@@ -51,6 +52,34 @@ const entry = () => {
 	r.Shutdown()
 }
 
+
+func TestRendererCallbacks(t *testing.T) {
+	src := `
+const entry = () => {
+	return "Calling callback() - " + callback("stringParam")
+}
+`
+	r := NewRenderer(src, RendererConfig{}, map[string]RendererCallback{
+		"callback": func(values []*v8.Value) interface{} {
+			if !values[0].IsString() || values[0].String() != "stringParam" {
+				return "fails"
+			}
+			return "works!"
+		},
+	})
+
+	result := r.Render("blah")
+	if result.Error != nil {
+		t.Fatalf("Render returned error: %v", result.Error)
+	}
+
+	if result.Output != "Calling callback() - works!" {
+		t.Fatalf("Incorrect output, received %v", result.Output)
+	}
+
+	r.Shutdown()
+}
+
 func TestScriptReload(t *testing.T) {
 	src1 := `
 const entry = () => {
@@ -61,7 +90,7 @@ const entry = () => {
 	tempFile := writeTempFile(src1, "")
 	defer os.Remove(tempFile)
 
-	r := NewRendererFromFile(tempFile, RendererConfig{ReloadOnChange: true})
+	r := NewRendererFromFile(tempFile, RendererConfig{ReloadOnChange: true}, map[string]RendererCallback{})
 	result := r.Render("blah")
 	if result.Output != "script1" || result.Error != nil {
 		t.Fatalf("Render scr1 failed: %v", result)

@@ -12,7 +12,6 @@ type RendererConfig struct {
 	ReloadOnChange bool
 	Entry string
 	Threads int
-
 }
 
 var DefaultRendererConfig RendererConfig = RendererConfig{
@@ -22,11 +21,15 @@ var DefaultRendererConfig RendererConfig = RendererConfig{
 	Threads: 4,
 }
 
+type RendererCallback func([]*v8.Value) interface{}
+
 type Renderer struct {
 	Config RendererConfig
+	callbacks map[string]RendererCallback
 
 	source string
 	compiledScriptCache *v8.CompilerCachedData
+
 	events chan renderEvent
 	threads []*RenderThread
 
@@ -34,11 +37,11 @@ type Renderer struct {
 	modTime time.Time
 }
 
-func NewRendererFromFile(filename string, config RendererConfig) (result *Renderer) {
+func NewRendererFromFile(filename string, config RendererConfig, callbacks map[string]RendererCallback) (result *Renderer) {
 	src := loadScriptFromFile(filename)
 	config.filename = filename
 
-	return NewRenderer(string(src), config)
+	return NewRenderer(string(src), config, callbacks)
 }
 
 func loadScriptFromFile(filename string) string {
@@ -49,7 +52,7 @@ func loadScriptFromFile(filename string) string {
 	return string(src)
 }
 
-func NewRenderer(source string, config RendererConfig) (result *Renderer) {
+func NewRenderer(source string, config RendererConfig, callbacks map[string]RendererCallback) (result *Renderer) {
 	result = &Renderer{}
 
 	result.Config = DefaultRendererConfig
@@ -70,6 +73,7 @@ func NewRenderer(source string, config RendererConfig) (result *Renderer) {
 	}
 
 	result.source = source
+	result.callbacks = callbacks
 	result.initializeThreads()
 
 	return
