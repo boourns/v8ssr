@@ -1,6 +1,7 @@
 package v8ssr
 
 import (
+	"context"
 	"fmt"
 	"log"
 	v8 "rogchap.com/v8go"
@@ -20,6 +21,7 @@ type renderResult struct {
 
 type renderEvent struct {
 	action
+	context context.Context
 	result chan *renderResult
 	params interface{}
 }
@@ -28,7 +30,7 @@ type RenderThread struct {
 	renderer *Renderer
 	events chan renderEvent
 	isolate *v8.Isolate
-	context *v8.Context
+	context context.Context
 	script *v8.UnboundScript
 	global *v8.ObjectTemplate
 }
@@ -43,9 +45,17 @@ func (r *Renderer) newRenderThread() *RenderThread {
 
 	global := v8.NewObjectTemplate(iso) // a template that represents a JS Object
 
+	thread := &RenderThread{
+		events: r.events,
+		script: script,
+		isolate: iso,
+		renderer: r,
+		global: global,
+	}
+
 	for name, f := range r.callbacks {
 		fun := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
-			r := f(info.Args())
+			r := f(thread.context, info.Args())
 			result, err := v8.NewValue(iso, r)
 			if err != nil {
 				panic(fmt.Errorf("callback %s returned value %v, cannot be converted to v8 - %v", name, r, err))
@@ -53,14 +63,6 @@ func (r *Renderer) newRenderThread() *RenderThread {
 			return result
 		})
 		global.Set(name, fun)
-	}
-
-	thread := &RenderThread{
-		events: r.events,
-		script: script,
-		isolate: iso,
-		renderer: r,
-		global: global,
 	}
 
 	go thread.run()
@@ -76,6 +78,8 @@ func (t *RenderThread) run() {
 			case request:
 				log.Printf("Render request: %v", event.params)
 				var result renderResult
+
+				t.context = event.context
 
 				ctx := v8.NewContext(t.isolate, t.global)
 				_, err := t.script.Run(ctx)

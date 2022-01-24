@@ -1,6 +1,7 @@
 package v8ssr
 
 import (
+	"context"
 	"io/ioutil"
 	"os"
 	v8 "rogchap.com/v8go"
@@ -14,14 +15,14 @@ type RendererConfig struct {
 	Threads int
 }
 
-var DefaultRendererConfig RendererConfig = RendererConfig{
+var DefaultRendererConfig = RendererConfig{
 	Entry: "entry()",
 	filename: "",
 	ReloadOnChange: false,
 	Threads: 4,
 }
 
-type RendererCallback func([]*v8.Value) interface{}
+type RendererCallback func(context.Context, []*v8.Value) interface{}
 
 type Renderer struct {
 	Config RendererConfig
@@ -79,7 +80,7 @@ func NewRenderer(source string, config RendererConfig, callbacks map[string]Rend
 	return
 }
 
-func (r *Renderer) Render(params interface{}) *renderResult {
+func (r *Renderer) Render(ctx context.Context, params interface{}) *renderResult {
 	if r.Config.ReloadOnChange {
 		r.reloadIfChanged()
 	}

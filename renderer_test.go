@@ -1,6 +1,7 @@
 package v8ssr
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,8 @@ import (
 )
 
 func TestBasicRenderer(t *testing.T) {
+	ctx := context.Background()
+
 	src := `
 const entry = () => {
 	return "hello from javascript, " + params 
@@ -16,7 +19,7 @@ const entry = () => {
 `
 	r := NewRenderer(src, RendererConfig{}, map[string]RendererCallback{})
 
-	result := r.Render("blah")
+	result := r.Render(ctx, "blah")
 	if result.Error != nil {
 		t.Fatalf("Render returned error: %v", result.Error)
 	}
@@ -39,7 +42,7 @@ const entry = () => {
 		t.Fatalf("marshal error: %v", err)
 	}
 
-	result = r.Render(string(data))
+	result = r.Render(ctx, string(data))
 
 	if result.Error != nil {
 		t.Fatalf("Render returned error: %v", result.Error)
@@ -54,13 +57,15 @@ const entry = () => {
 
 
 func TestRendererCallbacks(t *testing.T) {
+	ctx := context.Background()
+
 	src := `
 const entry = () => {
 	return "Calling callback() - " + callback("stringParam")
 }
 `
 	r := NewRenderer(src, RendererConfig{}, map[string]RendererCallback{
-		"callback": func(values []*v8.Value) interface{} {
+		"callback": func(ctx context.Context, values []*v8.Value) interface{} {
 			if !values[0].IsString() || values[0].String() != "stringParam" {
 				return "fails"
 			}
@@ -68,7 +73,7 @@ const entry = () => {
 		},
 	})
 
-	result := r.Render("blah")
+	result := r.Render(ctx, "blah")
 	if result.Error != nil {
 		t.Fatalf("Render returned error: %v", result.Error)
 	}
@@ -81,6 +86,8 @@ const entry = () => {
 }
 
 func TestScriptReload(t *testing.T) {
+	ctx := context.Background()
+
 	src1 := `
 const entry = () => {
 	return "script1"
@@ -91,7 +98,7 @@ const entry = () => {
 	defer os.Remove(tempFile)
 
 	r := NewRendererFromFile(tempFile, RendererConfig{ReloadOnChange: true}, map[string]RendererCallback{})
-	result := r.Render("blah")
+	result := r.Render(ctx, "blah")
 	if result.Output != "script1" || result.Error != nil {
 		t.Fatalf("Render scr1 failed: %v", result)
 	}
@@ -102,7 +109,7 @@ const entry = () => {
 }
 `
 	writeTempFile(src2, tempFile)
-	result = r.Render("blah")
+	result = r.Render(ctx, "blah")
 	if result.Output != "script2" || result.Error != nil {
 		t.Fatalf("Render scr2 failed: %v", result)
 	}
