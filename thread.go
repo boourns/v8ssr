@@ -62,6 +62,10 @@ func (r *Renderer) newRenderThread() *RenderThread {
 	for name, f := range r.callbacks {
 		fun := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
 			r := f(thread.context, info.Args())
+			if r == nil {
+				return nil
+			}
+
 			result, err := v8.NewValue(iso, r)
 			if err != nil {
 				panic(fmt.Errorf("callback %s returned value %v, cannot be converted to v8 - %v", name, r, err))
