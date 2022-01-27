@@ -14,6 +14,8 @@ const (
 	shutdown action = iota
 )
 
+var threadCount int
+
 type renderResult struct {
 	Output string
 	Error error
@@ -27,6 +29,7 @@ type renderEvent struct {
 }
 
 type RenderThread struct {
+	id int
 	renderer *Renderer
 	events chan renderEvent
 	isolate *v8.Isolate
@@ -51,17 +54,26 @@ func (r *Renderer) newRenderThread() *RenderThread {
 		isolate: iso,
 		renderer: r,
 		global: global,
+		id: threadCount,
 	}
 
-	for name, f := range r.callbacks {
+	threadCount += 1
+
+	for n, f := range r.callbacks {
+		name, fu := n, f
 		fun := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
-			r := f(thread.context, info.Args())
+			r := fu(thread.context, info.Args())
+			if r == nil {
+				return nil
+			}
+
 			result, err := v8.NewValue(iso, r)
 			if err != nil {
 				panic(fmt.Errorf("callback %s returned value %v, cannot be converted to v8 - %v", name, r, err))
 			}
 			return result
 		})
+
 		global.Set(name, fun)
 	}
 
@@ -76,7 +88,7 @@ func (t *RenderThread) run() {
 		case event := <-t.events:
 			switch event.action {
 			case request:
-				log.Printf("Render request: %v", event.params)
+				log.Printf("ID %d, Render request: %v", t.id, event.params)
 				var result renderResult
 
 				t.context = event.context
