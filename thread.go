@@ -59,8 +59,12 @@ func (r *Renderer) newRenderThread() *RenderThread {
 
 	threadCount += 1
 
-	for name, f := range r.callbacks {
+	for n, f := range r.callbacks {
+		name, _ := n, f
 		fun := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
+			if name != n {
+				log.Printf("Calling %v but expect %v", n, name)
+			}
 			r := f(thread.context, info.Args())
 			if r == nil {
 				return nil
@@ -72,6 +76,7 @@ func (r *Renderer) newRenderThread() *RenderThread {
 			}
 			return result
 		})
+
 		global.Set(name, fun)
 	}
 
