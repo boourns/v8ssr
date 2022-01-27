@@ -14,6 +14,8 @@ const (
 	shutdown action = iota
 )
 
+var threadCount int
+
 type renderResult struct {
 	Output string
 	Error error
@@ -27,6 +29,7 @@ type renderEvent struct {
 }
 
 type RenderThread struct {
+	id int
 	renderer *Renderer
 	events chan renderEvent
 	isolate *v8.Isolate
@@ -51,7 +54,10 @@ func (r *Renderer) newRenderThread() *RenderThread {
 		isolate: iso,
 		renderer: r,
 		global: global,
+		id: threadCount,
 	}
+
+	threadCount += 1
 
 	for name, f := range r.callbacks {
 		fun := v8.NewFunctionTemplate(iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
@@ -76,7 +82,7 @@ func (t *RenderThread) run() {
 		case event := <-t.events:
 			switch event.action {
 			case request:
-				log.Printf("Render request: %v", event.params)
+				log.Printf("ID %d, Render request: %v", t.id, event.params)
 				var result renderResult
 
 				t.context = event.context
